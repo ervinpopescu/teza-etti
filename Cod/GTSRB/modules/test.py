@@ -96,7 +96,6 @@ def test_model_images(model: Model):
 
     testTargets = {"class_label": predicted_labels, "bounding_box": bboxes}
     metrics_names = model.metrics_names
-    correct = 0
 
     if not os.path.exists(scores_path):
         # Evaluate the model
@@ -141,54 +140,57 @@ def test_model_images(model: Model):
             for score in scores:
                 print(score.strip("\n"))
 
-    print()
-    random_choices = random.choices(image_paths, k=int(len(image_paths) / 10))
-    for image_path in random_choices:
-        index = np.where(image_paths == image_path)[0][0]
-        i = np.argmax(predicted_labels[index], axis=0)
-        predicted_label = labels_json[str(i)]
-        correct_label = labels_json[str(correct_labels[index])]
-        # print(f"Correct label: {correct_label}\nPredicted label: {predicted_label}\n")
-        if predicted_label == correct_label:
-            correct += 1
+    for i in range(1):
+        correct = 0
+        print()
+        random.seed(random.random()*50)
+        random_choices = random.choices(image_paths, k=int(len(image_paths) / 100))
+        for image_path in random_choices:
+            index = np.where(image_paths == image_path)[0][0]
+            i = np.argmax(predicted_labels[index], axis=0)
+            predicted_label = labels_json[str(i)]
+            correct_label = labels_json[str(correct_labels[index])]
+            # print(f"Correct label: {correct_label}\nPredicted label: {predicted_label}\n")
+            if predicted_label == correct_label:
+                correct += 1
 
-        # image = Image.open(image_path)
-        # image = Image.Image.resize(image, size=(256, 256))
+            # image = Image.open(image_path)
+            # image = Image.Image.resize(image, size=(256, 256))
 
-        # # scaling pred. bbox coords according to image dims
-        # (xmin, ymin, xmax, ymax) = bboxes[index]
-        # (h, w) = (image.height, image.width)
-        # xmin = int(xmin * w)
-        # ymin = int(ymin * h)
-        # xmax = int(xmax * w)
-        # ymax = int(ymax * h)
+            # # scaling pred. bbox coords according to image dims
+            # (xmin, ymin, xmax, ymax) = bboxes[index]
+            # (h, w) = (image.height, image.width)
+            # xmin = int(xmin * w)
+            # ymin = int(ymin * h)
+            # xmax = int(xmax * w)
+            # ymax = int(ymax * h)
 
-        # # drawing bbox and label on image
-        # draw = ImageDraw.ImageDraw(image, "RGBA")
-        # draw.font = ImageFont.truetype(
-        #     "/usr/share/fonts/OTF/intelone-mono-font-family-regular.otf", size=13
-        # )
-        # draw.fontmode = "L"
-        # draw.text((xmin, (ymax - 10) / 2), predicted_label, (0, 255, 0))
+            # # drawing bbox and label on image
+            # draw = ImageDraw.ImageDraw(image, "RGBA")
+            # draw.font = ImageFont.truetype(
+            #     "/usr/share/fonts/OTF/intelone-mono-font-family-regular.otf", size=13
+            # )
+            # draw.fontmode = "L"
+            # draw.text((xmin, (ymax - 10) / 2), predicted_label, (0, 255, 0))
 
-        # draw.rectangle(
-        #     xy=(
-        #         (xmin, ymax),
-        #         (xmax, ymin),
-        #     ),
-        #     fill=(0, 0, 0, 0),
-        #     outline=(0, 255, 0),
-        # )
+            # draw.rectangle(
+            #     xy=(
+            #         (xmin, ymax),
+            #         (xmax, ymin),
+            #     ),
+            #     fill=(0, 0, 0, 0),
+            #     outline=(0, 255, 0),
+            # )
 
-        # showing the output image
-        # plt.imshow(cv2.cvtColor(np.array(image), cv2.COLOR_BGR2RGB))
-        # plt.show()
+            # showing the output image
+            # plt.imshow(cv2.cvtColor(np.array(image), cv2.COLOR_BGR2RGB))
+            # plt.show()
 
-    print(
-        f"correct labels for random images: {correct}/{len(random_choices)}({correct/len(random_choices)*100:.2f}%)"
-    )
-    with open(os.path.join(output_path, "accuracies.txt"), "a") as f:
-        f.write(f"{correct/len(random_choices)*100:.2f}\n")
+        print(
+            f"correct labels for random images: {correct}/{len(random_choices)}({correct/len(random_choices)*100:.2f}%)"
+        )
+        with open(os.path.join(output_path, "accuracies.txt"), "a") as f:
+            f.write(f"{correct/len(random_choices)*100:.2f}\n")
 
     return
 
