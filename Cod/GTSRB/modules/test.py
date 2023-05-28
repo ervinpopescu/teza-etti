@@ -13,7 +13,7 @@ import pandas as pd
 from keras.models import Model
 from keras.utils import img_to_array, load_img
 from matplotlib import pyplot as plt
-from modules import (
+from modules.config import (
     BATCH_SIZE,
     IMG_SIZE,
     input_path,
@@ -79,7 +79,7 @@ def vidwrite(fn, images, **kwargs):
     writer.close()
 
 
-def test_model(model: Model):
+def test_model_images(model: Model):
     images, bboxes, image_paths = load_test_data(test_data_dir)
     if os.path.exists(predicted_labels_path):
         with open(predicted_labels_path, "rb") as f:
@@ -96,6 +96,7 @@ def test_model(model: Model):
 
     testTargets = {"class_label": predicted_labels, "bounding_box": bboxes}
     metrics_names = model.metrics_names
+    correct = 0
 
     if not os.path.exists(scores_path):
         # Evaluate the model
@@ -105,23 +106,7 @@ def test_model(model: Model):
             batch_size=BATCH_SIZE,
             verbose=1,
         )
-        with open(scores_path, "w") as f:
-            for name, score in zip(metrics_names, scores):
-                if "loss" in name:
-                    line = "{}: {:.2f}\n".format(name, score)
-                else:
-                    line = "{}: {:.2f}%\n".format(name, score * 100)
-                print(line.strip("\n"))
-                f.write(line)
-    else:
-        with open(scores_path, "r") as f:
-            scores = f.read().splitlines()
-            for score in scores:
-                print(score.strip("\n"))
 
-    correct = 0
-
-    if not os.path.exists(scores_path):
         for image_path in image_paths:
             index = np.where(image_paths == image_path)[0][0]
             image = load_img(image_path, target_size=IMG_SIZE)
@@ -140,57 +125,75 @@ def test_model(model: Model):
             if predicted_label == correct_label:
                 correct += 1
 
-            with open(scores_path, "w") as f:
-                f.write(f"Test accuracy: {correct/len(images)*100:.2f}%")
-            print(f"Test accuracy: {correct/len(images)*100:.2f}%")
+        with open(scores_path, "w") as f:
+            for name, score in zip(metrics_names, scores):
+                if "loss" in name:
+                    line = "{}: {:.2f}\n".format(name, score)
+                else:
+                    line = "{}: {:.2f}%\n".format(name, score * 100)
+                print(line.strip("\n"))
+                f.write(line)
+            f.write(f"Test accuracy: {correct/len(images)*100:.2f}%")
+        print(f"Test accuracy: {correct/len(images)*100:.2f}%")
+    else:
+        with open(scores_path, "r") as f:
+            scores = f.read().splitlines()
+            for score in scores:
+                print(score.strip("\n"))
 
-    random_choices = random.choices(image_paths, k=10)
+    print()
+    random_choices = random.choices(image_paths, k=int(len(image_paths) / 10))
     for image_path in random_choices:
         index = np.where(image_paths == image_path)[0][0]
         i = np.argmax(predicted_labels[index], axis=0)
         predicted_label = labels_json[str(i)]
         correct_label = labels_json[str(correct_labels[index])]
+        # print(f"Correct label: {correct_label}\nPredicted label: {predicted_label}\n")
         if predicted_label == correct_label:
             correct += 1
 
-        image = Image.open(image_path)
-        image = Image.Image.resize(image, size=(256, 256))
+        # image = Image.open(image_path)
+        # image = Image.Image.resize(image, size=(256, 256))
 
-        # scaling pred. bbox coords according to image dims
-        (xmin, ymin, xmax, ymax) = bboxes[index]
-        (h, w) = (image.height, image.width)
-        xmin = int(xmin * w)
-        ymin = int(ymin * h)
-        xmax = int(xmax * w)
-        ymax = int(ymax * h)
+        # # scaling pred. bbox coords according to image dims
+        # (xmin, ymin, xmax, ymax) = bboxes[index]
+        # (h, w) = (image.height, image.width)
+        # xmin = int(xmin * w)
+        # ymin = int(ymin * h)
+        # xmax = int(xmax * w)
+        # ymax = int(ymax * h)
 
-        # drawing bbox and label on image
-        draw = ImageDraw.ImageDraw(image, "RGBA")
-        draw.font = ImageFont.truetype(
-            "/usr/share/fonts/OTF/intelone-mono-font-family-regular.otf", size=13
-        )
-        draw.fontmode = "L"
-        draw.text((xmin, (ymax - 10) / 2), predicted_label, (0, 255, 0))
+        # # drawing bbox and label on image
+        # draw = ImageDraw.ImageDraw(image, "RGBA")
+        # draw.font = ImageFont.truetype(
+        #     "/usr/share/fonts/OTF/intelone-mono-font-family-regular.otf", size=13
+        # )
+        # draw.fontmode = "L"
+        # draw.text((xmin, (ymax - 10) / 2), predicted_label, (0, 255, 0))
 
-        draw.rectangle(
-            xy=(
-                (xmin, ymax),
-                (xmax, ymin),
-            ),
-            fill=(0, 0, 0, 0),
-            outline=(0, 255, 0),
-        )
+        # draw.rectangle(
+        #     xy=(
+        #         (xmin, ymax),
+        #         (xmax, ymin),
+        #     ),
+        #     fill=(0, 0, 0, 0),
+        #     outline=(0, 255, 0),
+        # )
 
         # showing the output image
-        plt.imshow(cv2.cvtColor(np.array(image), cv2.COLOR_BGR2RGB))
-        plt.show()
+        # plt.imshow(cv2.cvtColor(np.array(image), cv2.COLOR_BGR2RGB))
+        # plt.show()
 
-    # print(f"correct labels for random images: {correct}/10")
+    print(
+        f"correct labels for random images: {correct}/{len(random_choices)}({correct/len(random_choices)*100:.2f}%)"
+    )
+    with open(os.path.join(output_path, "accuracies.txt"), "a") as f:
+        f.write(f"{correct/len(random_choices)*100:.2f}\n")
 
     return
 
 
-def test_model_video(model: Model, input_video_fn: str):
+def test_model_videos(model: Model, input_video_fn: str):
     print(f"processing input video {input_video_fn}")
     input_video_path = os.path.join(input_videos_dir, input_video_fn)
     output_video_path = os.path.join(

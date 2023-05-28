@@ -5,7 +5,6 @@ from keras.utils.vis_utils import plot_model
 from modules.config import BATCH_SIZE, NUM_EPOCHS, saved_model_path, training_data_dir
 from modules.load_data import load_training_data
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelBinarizer
 
 
 def train_model(model: Model) -> None:

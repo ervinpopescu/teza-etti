@@ -1,12 +1,10 @@
 import os
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
 from keras.utils import img_to_array, load_img
-from modules.config import (
-    IMG_SIZE,
-    NUM_CLASSES,
-)
+from modules.config import IMG_SIZE, NUM_CLASSES
 from sklearn.preprocessing import LabelBinarizer
 
 
@@ -53,7 +51,8 @@ def load_training_data(data_dir):
 
     return images, labels, bboxes, image_paths
 
-def load_test_data(data_dir) -> tuple(np.array, np.array, np.array):
+
+def load_test_data(data_dir):
     images = []
     bboxes = []
     image_paths = []
