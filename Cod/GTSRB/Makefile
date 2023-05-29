@@ -1,21 +1,20 @@
 all: clean run
 
 train:
-	python -W ignore main.py --train
+	python main.py --train
 
 test:
-	python -W ignore main.py --test
+	python main.py --train --test
+	scripts/print_scores.py
 
 test-images:
-	python -W ignore main.py --test-images
+	python main.py --test-images
+	scripts/print_scores.py
 
 test-videos:
-	python -W ignore main.py --test-videos
-
-run:
-	python -W ignore main.py --train --test
+	python main.py --test-videos
 
 clean:
-	rm -rf output/{output-*,scores.txt,predicted_labels.pickle}
+	rm -rf output/*/{output*,scores*.txt,predicted_labels*.pickle,accuracies*.txt}
 
 .PHONY: all train test* clean

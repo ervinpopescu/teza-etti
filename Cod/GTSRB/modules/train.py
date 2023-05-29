@@ -2,7 +2,13 @@ import os
 
 from keras.models import Model
 from keras.utils.vis_utils import plot_model
-from modules.config import BATCH_SIZE, NUM_EPOCHS, saved_model_path, training_data_dir
+from modules.config import (
+    BATCH_SIZE,
+    NUM_EPOCHS,
+    base_model_name,
+    saved_model_path,
+    training_data_dir,
+)
 from modules.load_data import load_training_data
 from sklearn.model_selection import train_test_split
 
@@ -23,10 +29,10 @@ def train_model(model: Model) -> None:
     }
 
     model.summary()
-    if not os.path.exists("../../figuri/model_plot.png"):
+    if not os.path.exists(f"../../figuri/model_{base_model_name}_plot.png"):
         plot_model(
             model,
-            to_file="../../figuri/model_plot.png",
+            to_file=f"../../figuri/model_{base_model_name}_plot.png",
             dpi=192,
             show_shapes=True,
             show_layer_names=True,
@@ -35,14 +41,13 @@ def train_model(model: Model) -> None:
         )
 
     # Train the model
-    # history ls= model.fit(
-    model.fit(
+    history = model.fit(
         x_train,
         train_targets,
         validation_data=(x_validation, validation_targets),
         epochs=NUM_EPOCHS,
         batch_size=BATCH_SIZE,
-        verbose=1,
+        verbose=0,
     )
 
     model.save(saved_model_path)
@@ -55,4 +60,4 @@ def train_model(model: Model) -> None:
     # plt.legend(loc="lower right")
     # plt.show()
 
-    return
+    return history

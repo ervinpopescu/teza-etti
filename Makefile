@@ -11,4 +11,4 @@ pdf: ps
 	ps2pdf proiect.ps
 
 clean:
-	rm -f *.aux *.fdb* *.fls *.lof *.log *.lot *.out *.synctex* *.toc
+	rm -f *.dvi *.aux *.fdb* *.fls *.lof *.log *.lot *.out *.synctex* *.toc

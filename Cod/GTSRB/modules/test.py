@@ -23,6 +23,7 @@ from modules.config import (
     predicted_labels_path,
     scores_path,
     test_data_dir,
+    accuracies_path
 )
 from modules.load_data import load_test_data
 from PIL import Image, ImageDraw, ImageFont
@@ -62,7 +63,6 @@ class VideoWriter:
                 .overwrite_output()
                 .run_async(pipe_stdin=True)
             )
-            # print(self.process.args)
         self.process.stdin.write(frame.astype(np.uint8).tobytes())
 
     def close(self):
@@ -96,6 +96,7 @@ def test_model_images(model: Model):
 
     testTargets = {"class_label": predicted_labels, "bounding_box": bboxes}
     metrics_names = model.metrics_names
+    correct = 0
 
     if not os.path.exists(scores_path):
         # Evaluate the model
@@ -103,7 +104,7 @@ def test_model_images(model: Model):
             images,
             testTargets,
             batch_size=BATCH_SIZE,
-            verbose=1,
+            verbose=0,
         )
 
         for image_path in image_paths:
@@ -116,10 +117,6 @@ def test_model_images(model: Model):
             i = np.argmax(predicted_labels[index], axis=0)
             predicted_label = labels_json[str(i)]
             correct_label = labels_json[str(correct_labels[index])]
-            # print("\n")
-            # print(f"{index}: {image_path}")
-            # print(f"Predicted label: {predicted_label}")
-            # print(f"Correct label: {correct_label}")
 
             if predicted_label == correct_label:
                 correct += 1
@@ -130,19 +127,11 @@ def test_model_images(model: Model):
                     line = "{}: {:.2f}\n".format(name, score)
                 else:
                     line = "{}: {:.2f}%\n".format(name, score * 100)
-                print(line.strip("\n"))
                 f.write(line)
             f.write(f"Test accuracy: {correct/len(images)*100:.2f}%")
-        print(f"Test accuracy: {correct/len(images)*100:.2f}%")
-    else:
-        with open(scores_path, "r") as f:
-            scores = f.read().splitlines()
-            for score in scores:
-                print(score.strip("\n"))
 
-    for i in range(1):
+    for i in range(1000):
         correct = 0
-        print()
         random.seed(random.random()*50)
         random_choices = random.choices(image_paths, k=int(len(image_paths) / 100))
         for image_path in random_choices:
@@ -150,7 +139,6 @@ def test_model_images(model: Model):
             i = np.argmax(predicted_labels[index], axis=0)
             predicted_label = labels_json[str(i)]
             correct_label = labels_json[str(correct_labels[index])]
-            # print(f"Correct label: {correct_label}\nPredicted label: {predicted_label}\n")
             if predicted_label == correct_label:
                 correct += 1
 
@@ -186,10 +174,7 @@ def test_model_images(model: Model):
             # plt.imshow(cv2.cvtColor(np.array(image), cv2.COLOR_BGR2RGB))
             # plt.show()
 
-        print(
-            f"correct labels for random images: {correct}/{len(random_choices)}({correct/len(random_choices)*100:.2f}%)"
-        )
-        with open(os.path.join(output_path, "accuracies.txt"), "a") as f:
+        with open(accuracies_path, "a") as f:
             f.write(f"{correct/len(random_choices)*100:.2f}\n")
 
     return
