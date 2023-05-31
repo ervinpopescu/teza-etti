@@ -1,20 +1,22 @@
+PYTHON=python -W ignore
+
 all: clean run
 
 train:
-	python main.py --train
+	(time (${PYTHON} main.py --train |& tee main.log) | tee -a main.log) &>/dev/null
 
 test:
-	python main.py --train --test
-	scripts/print_scores.py
+	(time (${PYTHON} main.py --train --test |& tee main.log) | tee -a main.log) &>/dev/null
+	scripts/print_scores.py |& tee -a main.log &>/dev/null
 
 test-images:
-	python main.py --test-images
-	scripts/print_scores.py
+	(time (${PYTHON} main.py --test-images |& tee main.log) | tee -a main.log) &>/dev/null
+	scripts/print_scores.py |& tee -a main.log &>/dev/null
 
 test-videos:
-	python main.py --test-videos
+	(time (${PYTHON} main.py --test-videos |& tee -a main.log) | tee -a main.log) &>/dev/null
 
 clean:
-	rm -rf output/*/{output*,scores*.txt,predicted_labels*.pickle,accuracies*.txt}
+	rm -rf output/*/{output*,scores.txt,predicted_labels.pickle,accuracies.txt}
 
 .PHONY: all train test* clean

@@ -1,6 +1,11 @@
 import os
 import pathlib
 
+RED = "\033[1;31m"
+GREEN = "\033[1;32m"
+BLUE = "\033[1;34m"
+RESET = "\033[0m"
+
 main_file_path = pathlib.Path(__file__).parent.parent
 input_path = os.path.join(main_file_path, "input")
 output_path = os.path.join(main_file_path, "output")
