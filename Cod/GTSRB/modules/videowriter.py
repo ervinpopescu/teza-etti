@@ -2,6 +2,7 @@ import subprocess
 
 import ffmpeg
 import numpy as np
+from modules.config import BLUE, GREEN, RESET
 
 
 class VideoWriter:

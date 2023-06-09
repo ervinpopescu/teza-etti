@@ -31,7 +31,6 @@ def load_training_data(data_dir):
                 ymin = int(row[6]) / h
                 xmax = int(row[5]) / w
                 ymax = int(row[4]) / h
-                # print("Loading image {} with label {}".format(row[0], label))
                 images.append(image)  # the 1st column is the filename
                 labels.append(label)  # the 8th column is the label
                 bboxes.append((xmin, ymin, xmax, ymax))
@@ -69,7 +68,6 @@ def load_test_data(data_dir):
             ymin = int(row[6]) / h
             xmax = int(row[5]) / w
             ymax = int(row[4]) / h
-            # print("Loading image {} with label {}".format(row[0], label))
             images.append(image)  # the 1st column is the filename
             bboxes.append((xmin, ymin, xmax, ymax))
             image_paths.append(impath)

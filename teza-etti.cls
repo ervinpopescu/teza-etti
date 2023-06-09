@@ -481,7 +481,7 @@ Absolvent: {\@author}
 	\pagenumbering{roman}
 	\pagestyle{empty}
 	\titlep
-	\includepdf{anexa1}
+	\includepdf{./anexa1.pdf}
 	\declaratiep
 	\ifcopyright\copyrightp\fi
 	\tableofcontents
@@ -538,7 +538,6 @@ Absolvent: {\@author}
 	\pagestyle{topright}
 }
 
-
 % Redefine appendix to print Appendix []. ... page # in table of contents.
 \newcommand{\appnumberline}[1]{Anexa #1. }
 \renewcommand\appendix{\par
@@ -561,7 +560,6 @@ Absolvent: {\@author}
 			\@topnewpage[\@makechapterhead{##2}]
 		\else \@makechapterhead{##2}
 			\@afterheading \fi}}
-
 
 %    ******* conditionals  *******
 \newif\ifdraft
@@ -589,3 +587,4 @@ Absolvent: {\@author}
 \phdfalse % default is not for PhD (currently is  Master of Science)
 \copyrightfalse
 \abbreviationspagefalse
+

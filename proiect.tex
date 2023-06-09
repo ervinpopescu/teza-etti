@@ -1,69 +1,5 @@
 \documentclass[12pt, a4paper, twoside, romanian]{teza-etti}
-\setcounter{secnumdepth}{3}
-\setcounter{tocdepth}{3}
-\usepackage{array}
-\usepackage{babel}
-\usepackage{color}
-\usepackage{graphicx}
-\usepackage{markdown}
-\usepackage{parskip}
-\usepackage[
-	bookmarks,
-	bookmarksopen=true,
-	pdftitle={Teza},
-	linktocpage]{hyperref}
-
-%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%
-% cod colorat
-% schimbați culorile și formatarea mai jos
-
-\usepackage{listings}
-\usepackage{color}
-
-\definecolor{codegreen}{rgb}{0,0.6,0}
-\definecolor{codegray}{rgb}{0.5,0.5,0.5}
-\definecolor{codepurple}{rgb}{0.58,0,0.82}
-\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
-
-\lstdefinestyle{mystyle}{
-	language=Python,
-	backgroundcolor=\color{backcolour},
-	commentstyle=\color{codegreen},
-	keywordstyle=\color{blue},
-	numberstyle=\tiny\color{codegray},
-	stringstyle=\color{codepurple},
-	basicstyle=\ttfamily\scriptsize,
-	breakatwhitespace=false,
-	breaklines=true,
-	captionpos=b,
-	keepspaces=true,
-	numbers=left,
-	numbersep=5pt,
-	showspaces=false,
-	showstringspaces=false,
-	showtabs=true,
-	tabsize=2
-}
-\lstset{style=mystyle}
-\renewcommand{\lstlistingname}{}
-\renewcommand{\lstlistlistingname}{List of \lstlistingname s}% List of Listings -> List of Algorithms
-
-\makeatletter
-\providecommand*{\toclevel@unnumberedsection}{0}
-\makeatother
-
-\author{Popescu Ervin-Adrian}
-\title{Aplicație de detecție și identificare a semnelor de circulație}
-\tiplucrare{Diplomă}
-\titlulobtinut{Inginer}
-\facultatea{Facultatea de Electronică, Telecomunicații și Tehnologia Informației}
-\domeniu{Electronică și Telecomunicații}
-\program{ Tehnologii și Sisteme de Telecomunicații}
-\director{Conf.Dr.Ing. Ionuţ PIRNOG}
-\submissionmonth{Iulie}
-\submissionyear{2022}
-
+\input{input.tex}
 \begin{document}
 %urmatoarea linie inserează paginile obligatorii cf. regulamentului ETTI
 \beforepreface{}
@@ -73,7 +9,6 @@
 	CNN:\ Convolutional\ Neural\ Network
 }
 \afterpreface{}
-
 
 %de aici începe teza propriu-zisă
 \chapter{Introducere}
@@ -85,14 +20,23 @@ deoarece necesită o analiză vizuală atentă a imaginilor și secvențelor vid
 Contribuția personală a acestui proiect constă în implementarea și optimizarea unui sistem de recunoaștere a semnelor de circulație în imagini și secvențe video. Proiectul va fi implementat în Python, utilizând diferite librării și algoritmi specifici de prelucrare a imaginilor și algoritmici de machine learning. Acest sistem va fi capabil să detecteze și să identifice semnele de circulație cu o precizie ridicată, prin utilizarea unor modele de învățare profundă, cum ar fi rețele neuronale convoluționale (CNN). În plus, aplicația va fi optimizată pentru a asigura o viteză de procesare ridicată, ceea ce va permite utilizarea sa în timp real în diferite situații de trafic.
 
 În concluzie, această lucrare de diplomă va prezenta o aplicație inovatoare de detecție și identificare a semnelor de circulație, care va îmbunătăți siguranța rutieră și eficiența traficului. Prin implementarea și optimizarea unui sistem de recunoaștere a semnelor de circulație în imagini și secvențe video, acest proiect va reprezenta o contribuție semnificativă la domeniul prelucrării imaginilor și al recunoașterii de modele.
+
+\chapter{Descrierea aplicației}
+În {\ref{main.py}} avem
 % \bibliographystyle{ieeetr}
 % \bibliography{referinte}
 \appendix
 \chapter{Cod sursă}
-\lstinputlisting[caption={Import-uri},linerange={1-20}]{Cod/GTSRB/GTSRB.py}
-\lstinputlisting[caption={Definiții de constante si path-uri},linerange={22-39}]{Cod/GTSRB/GTSRB.py}
-\lstinputlisting[caption={Funcția care încarcă datele},linerange={41-84}]{Cod/GTSRB/GTSRB.py}
-% \lstinputlisting[caption={Import-uri},linerange={1-20}]{Cod/GTSRB/GTSRB.py}
-% \lstinputlisting[caption={Import-uri},linerange={1-20}]{Cod/GTSRB/GTSRB.py}
-% \lstinputlisting[caption={Import-uri},linerange={1-20}]{Cod/GTSRB/GTSRB.py}
+\CountLinesInFile{./Cod/GTSRB/main.py}
+\lstinputlisting[caption={Main project file},linerange={1-\arabic{FileLines}},label=main.py]{./Cod/GTSRB/main.py}
+\pagebreak
+\CountLinesInFile{./Cod/GTSRB/modules/config.py}
+\lstinputlisting[caption={Config file},linerange={1-\arabic{FileLines}},captionpos=t]{./Cod/GTSRB/modules/config.py}
+\pagebreak
+\CountLinesInFile{./Cod/GTSRB/modules/load_data.py}
+\lstinputlisting[caption={Data loading module},linerange={1-\arabic{FileLines}}]{./Cod/GTSRB/modules/load_data.py}
+\pagebreak
+\CountLinesInFile{./Cod/GTSRB/modules/custom_model.py}
+\lstinputlisting[caption={Custom model module},linerange={1-\arabic{FileLines}}]{./Cod/GTSRB/modules/custom_model.py}
 \end{document}
+

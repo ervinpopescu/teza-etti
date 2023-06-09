@@ -2,9 +2,10 @@ import gzip
 import json
 import math
 import os
+import pathlib
 import pickle
 import random
-import time
+from timeit import default_timer as timer
 
 import cv2
 import ffmpeg
@@ -15,21 +16,77 @@ from keras.models import Model, load_model
 from keras.optimizers.rmsprop import RMSprop
 from keras.utils import img_to_array, load_img
 from keras.utils.vis_utils import plot_model
-from matplotlib import pyplot as plt
-from modules.config import (BATCH_SIZE, BLUE, GREEN, IMG_SIZE, INIT_LR,
-                            NUM_CLASSES, NUM_EPOCHS, RED, RESET, input_path,
-                            input_videos_dir, labels_path, output_path,
-                            test_data_dir, training_data_dir)
-from modules.load_data import load_test_data, load_training_data
-from modules.videowriter import vidwrite
 from PIL import Image, ImageDraw, ImageFont
 from sklearn.model_selection import train_test_split
+from tensorflow import lite
+
+from modules.config import (
+    BATCH_SIZE,
+    BLUE,
+    GREEN,
+    IMG_SIZE,
+    INIT_LR,
+    NUM_CLASSES,
+    NUM_EPOCHS,
+    RED,
+    RESET,
+    input_path,
+    input_videos_dir,
+    labels_path,
+    logger,
+    output_path,
+    test_data_dir,
+    training_data_dir,
+)
+from modules.load_data import load_test_data, load_training_data
+from modules.videowriter import vidwrite
+
+
+class LiteModel:
+    @classmethod
+    def from_file(cls, model_path):
+        return LiteModel(lite.Interpreter(model_path=model_path))
+
+    @classmethod
+    def from_keras_model(cls, kmodel):
+        converter = lite.TFLiteConverter.from_keras_model(kmodel)
+        tflite_model = converter.convert()
+        return LiteModel(lite.Interpreter(model_content=tflite_model))
+
+    def __init__(self, interpreter):
+        self.interpreter: lite.Interpreter = interpreter
+        self.interpreter.allocate_tensors()
+        input_det = self.interpreter.get_input_details()[0]
+        output_det = self.interpreter.get_output_details()
+        output_det = output_det[0]
+        self.input_index = input_det["index"]
+        self.output_index = output_det["index"]
+        self.input_shape = input_det["shape"]
+        self.output_shape = output_det["shape"]
+        self.input_dtype = input_det["dtype"]
+        self.output_dtype = output_det["dtype"]
+
+    def predict(self, inp: np.ndarray):
+        inp = inp.astype(self.input_dtype)
+        count = inp.shape[0]
+        out = np.zeros((count, self.output_shape[1]), dtype=self.output_dtype)
+        for i in range(count):
+            self.interpreter.set_tensor(self.input_index, inp[i : i + 1])
+            self.interpreter.invoke()
+            out[i] = self.interpreter.get_tensor(self.output_index)[0]
+        return out
+
+    def predict_single(self, inp):
+        """Like predict(), but only for a single record. The input data can be a Python list."""
+        inp = np.array([inp], dtype=self.input_dtype)
+        self.interpreter.set_tensor(self.input_index, inp)
+        self.interpreter.invoke()
+        out = self.interpreter.get_tensor(self.output_index)
+        return out[0]
 
 
 class CustomModel:
-    def __init__(
-        self, base_model_function: Model, trained: bool
-    ) -> None:
+    def __init__(self, base_model_function: Model, trained: bool) -> None:
         self.model: Model = None
         input_shape = IMG_SIZE + tuple([3])
         input_tensor = Input(shape=IMG_SIZE + tuple([3]))
@@ -124,7 +181,7 @@ class CustomModel:
                 show_trainable=True,
             )
 
-        print(BLUE+"starting training"+RESET)
+        logger.info(f"{BLUE}starting training...{RESET}")
         # Train the model
         history = self.model.fit(
             x_train,
@@ -132,22 +189,24 @@ class CustomModel:
             validation_data=(x_validation, validation_targets),
             epochs=NUM_EPOCHS,
             batch_size=BATCH_SIZE,
-            verbose=1,
+            verbose=0,
         )
-
+        logger.info(f"{BLUE}ending training...{RESET}")
         self.model.save(self.saved_model_path)
 
         return history
 
-    def test_model_images(self):
+    def test_model_images(self, include_random: bool = False):
         images, bboxes, image_paths = load_test_data(test_data_dir)
         if os.path.exists(self.predicted_labels_path):
             with open(self.predicted_labels_path, "rb") as f:
                 predicted_labels = pickle.load(f)
         else:
-            print(BLUE+"predicting labels..."+RESET)
+            logger.info(f"{BLUE}predicting labels for images...{RESET}")
             predicted_labels = self.model.predict(
-                images, batch_size=BATCH_SIZE, verbose=1
+                images,
+                batch_size=BATCH_SIZE,
+                verbose=0,
             )[1]
             with open(self.predicted_labels_path, "wb") as f:
                 pickle.dump(predicted_labels, f)
@@ -158,16 +217,18 @@ class CustomModel:
             labels_json = json.load(f)
 
         testTargets = {"class_label": predicted_labels, "bounding_box": bboxes}
-        metrics_names = self.model.metrics_names
+        metrics_names: list[str] = self.model.metrics_names
         correct = 0
 
         if not os.path.exists(self.scores_path):
-            # Evaluate the model
+            logger.info(
+                f"{BLUE}evaluating model {GREEN}{self.base_model.name} {BLUE}and saving scores...{RESET}"
+            )
             scores = self.model.evaluate(
                 images,
                 testTargets,
                 batch_size=BATCH_SIZE,
-                verbose=1,
+                verbose=0,
             )
 
             for image_path in image_paths:
@@ -184,120 +245,108 @@ class CustomModel:
                 if predicted_label == correct_label:
                     correct += 1
 
-            printed = ""
             test_acc = f"Test accuracy: {correct/len(images)*100:.2f}%\n"
-
             with open(self.scores_path, "w") as f:
                 for name, score in zip(metrics_names, scores):
-                    if "loss" in name:
-                        line = "{}: {:.2f}\n".format(name, score)
+                    name = name.split("_")
+                    name[0] = name[0].capitalize()
+                    joined_name = " ".join(name)
+                    if "Loss" in joined_name or "loss" in joined_name:
+                        line = "{}: {:.2f}\n".format(joined_name, score)
                     else:
-                        line = "{}: {:.2f}%\n".format(name, score * 100)
+                        line = "{}: {:.2f}%\n".format(joined_name, score * 100)
                     f.write(line)
-                    printed = printed + line
                 f.write(test_acc)
-                printed = printed + test_acc
-        else:
-            with open(self.scores_path, "r") as f:
-                printed = f.read()
-
-        # for i in range(1):
-        #     t1=time.time()
-        #     correct = 0
-        #     random.seed(random.random() * 50)
-        #     random_choices = random.choices(image_paths, k=int(len(image_paths) / 100))
-        #     for image_path in random_choices:
-        #         index = np.where(image_paths == image_path)[0][0]
-        #         i = np.argmax(predicted_labels[index], axis=0)
-        #         predicted_label = labels_json[str(i)]
-        #         correct_label = labels_json[str(correct_labels[index])]
-        #         if predicted_label == correct_label:
-        #             correct += 1
-
-        #         image = Image.open(image_path)
-        #         image = Image.Image.resize(image, size=(256, 256))
-
-        #         # scaling pred. bbox coords according to image dims
-        #         (xmin, ymin, xmax, ymax) = bboxes[index]
-        #         (h, w) = (image.height, image.width)
-        #         xmin = int(xmin * w)
-        #         ymin = int(ymin * h)
-        #         xmax = int(xmax * w)
-        #         ymax = int(ymax * h)
-
-        #         # drawing bbox and label on image
-        #         draw = ImageDraw.ImageDraw(image, "RGBA")
-        #         draw.font = ImageFont.truetype(
-        #             "/usr/share/fonts/OTF/intelone-mono-font-family-regular.otf", size=13
-        #         )
-        #         draw.fontmode = "L"
-        #         draw.text((xmin, (ymax - 10) / 2), predicted_label, (0, 255, 0))
-
-        #         draw.rectangle(
-        #             xy=(
-        #                 (xmin, ymax),
-        #                 (xmax, ymin),
-        #             ),
-        #             fill=(0, 0, 0, 0),
-        #             outline=(0, 255, 0),
-        #         )
-
-        #         # showing the output image
-        #         plt.imshow(cv2.cvtColor(np.array(image), cv2.COLOR_BGR2RGB))
-        #         plt.show()
-
-        #     random_acc = f"{correct/len(random_choices)*100:.2f}\n"
-        #     with open(self.accuracies_path, "a") as f:
-        #         f.write(random_acc)
-        #     t2=time.time()
-        # print(f"{RED}Seconds to compute random accuracy: {t2-t1}{RESET}")
-        # printed = printed + random_acc
-        # print(BLUE+printed+RESET)
-
-        # return random_acc
+        if include_random:
+            logger.info(f"")
+            for i in range(100):
+                correct = 0
+                random.seed(random.random() * 50)
+                random_choices = random.choices(
+                    image_paths, k=int(len(image_paths) / 100)
+                )
+                for image_path in random_choices:
+                    index = np.where(image_paths == image_path)[0][0]
+                    i = np.argmax(predicted_labels[index], axis=0)
+                    predicted_label = labels_json[str(i)]
+                    correct_label = labels_json[str(correct_labels[index])]
+                    if predicted_label == correct_label:
+                        correct += 1
+                random_acc = f"{correct/len(random_choices)*100:.2f}\n"
+                with open(self.accuracies_path, "a") as f:
+                    f.write(random_acc)
 
     def test_model_videos(self, input_video_fn: str):
-        print(f"{BLUE}processing input video {RED}{input_video_fn}{RESET}")
+        logger.info(f"processing input video {GREEN}{input_video_fn}{RESET}")
         input_video_path = os.path.join(input_videos_dir, input_video_fn)
         output_video_path = os.path.join(
-            output_path, self.base_model.name, f'output-{input_video_fn.replace(".mp4","")}.mp4'
+            output_path,
+            self.base_model.name,
+            f'output-{input_video_fn.replace(".mp4","")}.mp4',
         )
         input_frames_path = os.path.join(
-            input_path, self.base_model.name, "frames", f"{input_video_fn}_frames.npy.gz"
+            input_path,
+            "frames",
+            self.base_model.name,
+            f'{input_video_fn.replace(".mp4","")}.frames.npy.gz',
         )
         with open(labels_path, "r") as f:
             labels_json = json.load(f)
+        lite_model_path = pathlib.Path(self.saved_model_path).with_suffix(".tflite")
+        if os.path.exists(lite_model_path):
+            with open(lite_model_path, "rb") as f:
+                model = LiteModel.from_file(model_path=str(lite_model_path))
+        else:
+            try:
+                model = LiteModel.from_keras_model(self.model)
+                with open(lite_model_path, "wb") as f:
+                    f.write(model)
+            except:
+                model = self.model
         video_stream = ffmpeg.probe(input_video_path)["streams"][0]
         ns = {"__builtins__": None}
         # frame_height = int(video_stream["height"])
         # frame_width = int(video_stream["width"])
         fps = math.ceil(float(eval(video_stream["avg_frame_rate"], ns)))
-        ffmpeg_input_args = {
-            "hide_banner": None,
-            "loglevel": "error",
-            "stats": None,
-            "v": "error",
-        }
+        # pix_fmt = video_stream["pix_fmt"]
+        pix_fmt = "rgb24"
+        if not os.path.exists(pathlib.Path(input_frames_path).parent):
+            os.mkdir(pathlib.Path(input_frames_path).parent)
+        if not os.path.exists(pathlib.Path(output_video_path).parent):
+            os.mkdir(pathlib.Path(output_video_path).parent)
         generated_frames = os.path.exists(input_frames_path)
         generated_video = os.path.exists(output_video_path)
         if generated_frames:
             if generated_video:
-                print(f"{RED}already generated frames and video for video {input_video_fn}{RESET}")
+                logger.info(
+                    f"already generated frames and video for video {GREEN}{input_video_fn}{RESET}"
+                )
             else:
-                print(f"{RED}reading generated frames for video {input_video_fn}{RESET}")
+                logger.info(
+                    f"reading generated frames for video {GREEN}{input_video_fn}{RESET}"
+                )
                 with gzip.GzipFile(input_frames_path, "r") as f:
                     frames = np.load(f)
-                print(f"{RED}writing output video {output_video_path}{RESET}")
+                logger.info(f"writing output video {GREEN}{output_video_path}{RESET}")
                 vidwrite(
                     output_video_path,
                     frames,
                     fps=fps // 4,
-                    in_pix_fmt="rgb24",
-                    input_args=ffmpeg_input_args,
+                    in_pix_fmt=pix_fmt,
+                    input_args={
+                        "hide_banner": None,
+                        "loglevel": "quiet",
+                        "nostats": None,
+                    },
+                    output_args={
+                        "loglevel": "quiet",
+                        "v": "quiet",
+                        "nostats": None,
+                    },
                 )
                 return
         else:
-            print(f"{RED}generating frames for video {input_video_fn}{RESET}")
+            logger.info(f"generating frames for video {GREEN}{input_video_fn}{RESET}")
             vidcap = cv2.VideoCapture(input_video_path)
             frames = []
             count = 0
@@ -309,10 +358,20 @@ class CustomModel:
                     expanded_frame = np.expand_dims(
                         frame, axis=0
                     )  # add an extra dimension to make it a batch of size 1
-                    label = labels_json[
-                        str(np.argmax(self.model.predict(expanded_frame, verbose=1)[1]))
-                    ]
-                    # print(label)
+                    if count == 0:
+                        start = timer()
+                    if isinstance(model, Model):
+                        label_predictions = model.predict(expanded_frame, verbose=0)
+                    elif isinstance(model, LiteModel):
+                        label_predictions = model.predict(expanded_frame)
+                    if count == 0:
+                        logger.info(
+                            f"predicting label took {RED}{timer()-start:.6f} {BLUE}seconds{RESET}"
+                        )
+                    label = labels_json[str(np.argmax(label_predictions))]
+                    # logger.info(label)
+                    if count == 0:
+                        start = timer()
                     font = ImageFont.truetype(
                         "/usr/share/fonts/OTF/intelone-mono-font-family-regular.otf",
                         size=20,
@@ -325,25 +384,34 @@ class CustomModel:
                     button_draw = ImageDraw.Draw(button_img)
                     button_draw.text((10, 10), label, fill=(0, 255, 0), font=font)
                     image.paste(button_img, (0, 0))
-                    # showing the output image
-                    # plt.imshow(np.array(image))
-                    # plt.show()
                     frames.append(np.array(image, dtype=np.uint8))
-                    count += fps // 2  # i.e. at 30 fps, this advances one second
+                    if count == 0:
+                        logger.info(
+                            f"modifying image took {RED}{timer()-start:.6f} {BLUE}seconds{RESET}"
+                        )
+                    count += fps  # i.e. at 30 fps, this advances one second
                     vidcap.set(cv2.CAP_PROP_POS_FRAMES, count)
                 else:
                     vidcap.release()
                     break
             frames = np.array(frames)
-            print(f"{RED}saving frames in {input_frames_path}{RESET}")
-            with gzip.GzipFile(input_frames_path, "w") as f:
+            logger.info(
+                f"saving {RED}{len(frames)}{BLUE} frames in {GREEN}{input_frames_path}{RESET}"
+            )
+            with gzip.GzipFile(input_frames_path, mode="w", compresslevel=3) as f:
                 np.save(f, frames)
-            print(f"{RED}writing output video {output_video_path}{RESET}")
+            logger.info(f"writing output video {GREEN}{output_video_path}{RESET}")
             vidwrite(
                 output_video_path,
                 frames,
                 fps=fps // 4,
-                in_pix_fmt="rgb24",
-                input_args=ffmpeg_input_args,
+                in_pix_fmt=pix_fmt,
+                input_args={
+                    "hide_banner": None,
+                    "loglevel": "quiet",
+                    "nostats": None,
+                    "v": "quiet",
+                },
+                output_args={"loglevel": "quiet", "nostats": None, "v": "quiet"},
             )
             return

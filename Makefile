@@ -1,14 +1,7 @@
-all: ps
+all: clean pdf
 
-ps:
-	latex proiect
-	latex proiect
-	bibtex proiect
-	latex proiect
-	dvips -o proiect.ps proiect.dvi
-
-pdf: ps
-	ps2pdf proiect.ps
+pdf:
+	latexmk -synctex=1 -interaction=nonstopmode -file-line-error -xelatex --shell-escape proiect
 
 clean:
-	rm -f *.dvi *.aux *.fdb* *.fls *.lof *.log *.lot *.out *.synctex* *.toc
+	rm -f *.acn *.acr *.alg *.aux *.bbl *.blg *.dvi *.fdb_latexmk *.fls *.glg *.glo *.gls *.idx *.ilg *.ind *.lof *.log *.lot *.nav *.out *.ps *.snm *.synctex* *.toc *.vrb *.xdv
