@@ -1,10 +1,9 @@
 #!/bin/python
 import os
 import pathlib
-from pprint import pprint
 import sys
-from setuptools import find_packages
 from pkgutil import iter_modules
+from setuptools import find_packages
 
 current_file_path = pathlib.Path(__file__).parent.resolve()
 
@@ -32,14 +31,21 @@ def find_modules(path):
 
 def main():
     modules, paths = find_modules(str(current_file_path.parent))
-    
-    string = """\\CountLinesInFile{{./Cod/GTSRB/{}}}
-    \\lstinputlisting[caption={{{}}},linerange={{1-\\LineCount}},label={},captionpos=t]{{./Cod/GTSRB/{}}}
-    \\pagebreak
-    """
-    for module, path in zip(modules, paths):
-        print(string.format(path, module, path, path))
-
+    paths.insert(0, "main.py")
+    modules.insert(0, "main")
+    string = "\\CountLinesInFile{{./Cod/GTSRB/{}}}\n\\lstinputlisting[caption={{{}}},linerange={{1-\\arabic{{FileLines}}}},label={},captionpos=t]{{./Cod/GTSRB/{}}}\n\\pagebreak\n"
+    appendix_tex = os.path.join(current_file_path.parent.parent.parent, "appendix.tex")
+    with open(appendix_tex, "w") as f:
+        for module, path in zip(modules, paths):
+            f.write(
+                string.format(
+                    path,
+                    module.replace("modules.", "").replace("_", " ").capitalize()
+                    + " module",
+                    path.replace("modules/", ""),
+                    path,
+                )
+            )
 
 if __name__ == "__main__":
     main()

@@ -91,4 +91,5 @@
 \providecommand*{\toclevel@unnumberedsection}{0}
 \makeatother
 
-\CatchFileDef{\LineCount}{|"wc -l ./Cod/GTSRB/main.py | awk '{print $1}'"}{}
+\immediate\write18{./Cod/GTSRB/scripts/appendix.py}
+% \CatchFileDef{\LineCount}{|"wc -l ./Cod/GTSRB/main.py | awk '{print $1}'"}{}

@@ -1,5 +1,5 @@
 \documentclass[12pt, a4paper, twoside, romanian]{teza-etti}
-\input{input.tex}
+\input{preamble.tex}
 \begin{document}
 %urmatoarea linie inserează paginile obligatorii cf. regulamentului ETTI
 \beforepreface{}
@@ -22,26 +22,10 @@ Contribuția personală a acestui proiect constă în implementarea și optimiza
 În concluzie, această lucrare de diplomă va prezenta o aplicație inovatoare de detecție și identificare a semnelor de circulație, care va îmbunătăți siguranța rutieră și eficiența traficului. Prin implementarea și optimizarea unui sistem de recunoaștere a semnelor de circulație în imagini și secvențe video, acest proiect va reprezenta o contribuție semnificativă la domeniul prelucrării imaginilor și al recunoașterii de modele.
 
 \chapter{Descrierea aplicației}
-În {\ref{main.py}} avem \LineCount.
+În {\ref{main.py}} avem \arabic{FileLines}.
 \appendix
 \chapter{Cod sursă}
-\CountLinesInFile{./Cod/GTSRB/main.py}
-\lstinputlisting[caption={Main project file},linerange={1-\LineCount},label=main.py,captionpos=t]{./Cod/GTSRB/main.py}
-\pagebreak
-\CountLinesInFile{./Cod/GTSRB/modules/config.py}
-\lstinputlisting[caption={Config file},linerange={1-\arabic{FileLines},label=main.py,captionpos=t}]{./Cod/GTSRB/modules/config.py}
-\pagebreak
-\CountLinesInFile{./Cod/GTSRB/modules/load_data.py}
-\lstinputlisting[caption={Data loading module},linerange={1-\arabic{FileLines}}]{./Cod/GTSRB/modules/load_data.py}
-\pagebreak
-\CountLinesInFile{./Cod/GTSRB/modules/custom_model.py}
-\lstinputlisting[caption={Custom model module},linerange={1-\arabic{FileLines}}]{./Cod/GTSRB/modules/custom_model.py}
-\pagebreak
-\CountLinesInFile{./Cod/GTSRB/modules/logger.py}
-\lstinputlisting[caption={Logger module},linerange={1-\arabic{FileLines}}]{./Cod/GTSRB/modules/logger.py}
-\pagebreak
-\CountLinesInFile{./Cod/GTSRB/modules/custom_model.py}
-\lstinputlisting[caption={Custom model module},linerange={1-\arabic{FileLines}}]{./Cod/GTSRB/modules/custom_model.py}
+\input{appendix.tex}
 % \bibliographystyle{ieeetr}
 % \bibliography{referinte}
 \end{document}
