@@ -1,0 +1,32 @@
+[1;34mModel: [1;31mMobilenetV3large
+	[1;34mLoading model took [1;31m2.363220[1;34m seconds
+	[1;34mTest accuracy: [1;31m18.0%
+	[1;34mModel took [1;31m8.000157[1;34m seconds
+[1;34mModel: [1;31mMobilenetV3small
+	[1;34mLoading model took [1;31m2.013604[1;34m seconds
+	[1;34mTest accuracy: [1;31m20.0%
+	[1;34mModel took [1;31m5.741850[1;34m seconds
+[1;34mModel: [1;31mresnet152
+	[1;34mLoading model took [1;31m6.363467[1;34m seconds
+	[1;34mTest accuracy: [1;31m21.0%
+	[1;34mModel took [1;31m44.148610[1;34m seconds
+[1;34mModel: [1;31mresnet152v2
+	[1;34mLoading model took [1;31m5.970918[1;34m seconds
+	[1;34mTest accuracy: [1;31m56.0%
+	[1;34mModel took [1;31m32.470398[1;34m seconds
+[1;34mModel: [1;31mresnet50
+	[1;34mLoading model took [1;31m2.272828[1;34m seconds
+	[1;34mTest accuracy: [1;31m11.0%
+	[1;34mModel took [1;31m26.486145[1;34m seconds
+[1;34mModel: [1;31mresnet50v2
+	[1;34mLoading model took [1;31m2.181081[1;34m seconds
+	[1;34mTest accuracy: [1;31m44.0%
+	[1;34mModel took [1;31m16.430124[1;34m seconds
+[1;34mModel: [1;31mvgg16
+	[1;34mLoading model took [1;31m0.590702[1;34m seconds
+	[1;34mTest accuracy: [1;31m49.0%
+	[1;34mModel took [1;31m11.789890[1;34m seconds
+[1;34mModel: [1;31mvgg19
+	[1;34mLoading model took [1;31m0.719229[1;34m seconds
+	[1;34mTest accuracy: [1;31m43.0%
+	[1;34mModel took [1;31m13.491836[1;34m seconds

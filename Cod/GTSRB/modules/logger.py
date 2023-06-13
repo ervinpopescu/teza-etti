@@ -1,11 +1,7 @@
+import os
 import warnings
-from logging import (
-    Formatter,
-    LogRecord,
-    Logger,
-    FileHandler,
-    captureWarnings,
-)
+from logging import Formatter, Logger, LogRecord, captureWarnings, getLogger
+from logging.handlers import RotatingFileHandler
 
 
 class ColorFormatter(Formatter):
@@ -51,16 +47,30 @@ class ColorFormatter(Formatter):
 def init_log(
     logger: Logger,
     log_path: str,
-    format_str: str = "$BOLD$COLOR==> $BOLD$BLUE%(message)s",
+    maxBytes: int = 10000,
+    backupCount: int = 0,
+    mode: str = "a",
+    format_str: str = "%(message)s",
     log_level="INFO",
 ) -> None:
     for handler in logger.handlers:
         logger.removeHandler(handler)
-    handler = FileHandler(filename=log_path, mode="w")
+    # should_roll_over = os.path.exists(log_path)
+    handler = RotatingFileHandler(
+        filename=log_path,
+        mode=mode,
+        backupCount=backupCount,
+        maxBytes=maxBytes,
+    )
+    # if should_roll_over:
+    #     handler.doRollover()
     formatter: Formatter = ColorFormatter(format_str)
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     logger.setLevel(log_level)
+    warnings_logger = getLogger("py.warnings")
+    warnings_logger.addHandler(handler)
+    # warnings_logger.setLevel("CRITICAL")
     # Capture everything from the warnings module.
     captureWarnings(True)
-    warnings.simplefilter("always")
+    warnings.simplefilter("ignore")

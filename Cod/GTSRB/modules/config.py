@@ -25,14 +25,15 @@ labels_path = os.path.join(input_path, "labels.json")
 IMG_SIZE = (64, 64)
 VIDEO_SIZE = (1024, 1024)
 NUM_CLASSES = 43
-INIT_LR = 1e-3
-NUM_EPOCHS = 10
+INIT_LR = 1e-2
+NUM_EPOCHS = 5
 BATCH_SIZE = 64
 
-logger: Logger = getLogger("main")
+logger: Logger = getLogger("main.py")
 init_log(
     logger,
+    mode="a",
     log_path=os.path.join(pathlib.Path(__file__).parent.parent.resolve(), "main.log"),
-    format_str="$BOLD$COLOR==> $BOLD$BLUE%(message)s",
+    format_str="%(message)s",
     log_level="INFO",
 )

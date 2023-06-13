@@ -9,11 +9,15 @@ from timeit import default_timer as timer
 
 import cv2
 import ffmpeg
+import jsonpickle
 import numpy as np
 import pandas as pd
+from keras.callbacks import History
 from keras.layers import Dense, Dropout, Flatten, Input
 from keras.models import Model, load_model
-from keras.optimizers.rmsprop import RMSprop
+
+# from keras.optimizers.adam import Adam
+from keras.optimizers.adamw import AdamW
 from keras.utils import img_to_array, load_img
 from keras.utils.vis_utils import plot_model
 from PIL import Image, ImageDraw, ImageFont
@@ -22,14 +26,10 @@ from tensorflow import lite
 
 from modules.config import (
     BATCH_SIZE,
-    BLUE,
-    GREEN,
     IMG_SIZE,
     INIT_LR,
     NUM_CLASSES,
     NUM_EPOCHS,
-    RED,
-    RESET,
     input_path,
     input_videos_dir,
     labels_path,
@@ -43,22 +43,11 @@ from modules.videowriter import vidwrite
 
 
 class LiteModel:
-    @classmethod
-    def from_file(cls, model_path):
-        return LiteModel(lite.Interpreter(model_path=model_path))
-
-    @classmethod
-    def from_keras_model(cls, kmodel):
-        converter = lite.TFLiteConverter.from_keras_model(kmodel)
-        tflite_model = converter.convert()
-        return LiteModel(lite.Interpreter(model_content=tflite_model))
-
     def __init__(self, interpreter):
         self.interpreter: lite.Interpreter = interpreter
         self.interpreter.allocate_tensors()
         input_det = self.interpreter.get_input_details()[0]
-        output_det = self.interpreter.get_output_details()
-        output_det = output_det[0]
+        output_det = self.interpreter.get_output_details()[1]
         self.input_index = input_det["index"]
         self.output_index = output_det["index"]
         self.input_shape = input_det["shape"]
@@ -76,18 +65,17 @@ class LiteModel:
             out[i] = self.interpreter.get_tensor(self.output_index)[0]
         return out
 
-    def predict_single(self, inp):
-        """Like predict(), but only for a single record. The input data can be a Python list."""
-        inp = np.array([inp], dtype=self.input_dtype)
-        self.interpreter.set_tensor(self.input_index, inp)
-        self.interpreter.invoke()
-        out = self.interpreter.get_tensor(self.output_index)
-        return out[0]
-
 
 class CustomModel:
-    def __init__(self, base_model_function: Model, trained: bool) -> None:
+    def __init__(
+        self, base_model_function: Model, trained: bool, lite_model_required: bool
+    ) -> None:
+        logger.info(f"\t$BLUEstarting `custom_model_instance.__init__`...$RESET")
+        start = timer()
         self.model: Model = None
+        self.history: dict = None
+        self.lite_model_required = lite_model_required
+        self.tflite_model = None
         input_shape = IMG_SIZE + tuple([3])
         input_tensor = Input(shape=IMG_SIZE + tuple([3]))
         base_model_args = dict(
@@ -97,6 +85,9 @@ class CustomModel:
             input_tensor=input_tensor,
         )
         self.base_model: Model = base_model_function(**base_model_args)
+        logger.info(
+            f"\t\t$BLUE`custom_model_instance.base_model.__init__` took $RED{timer()-start:.2f} $BLUEseconds$RESET"
+        )
         self.saved_model_path = os.path.join(
             output_path, self.base_model.name, "model.h5"
         )
@@ -112,48 +103,44 @@ class CustomModel:
             output_path, self.base_model.name, "accuracies.txt"
         )
         if not trained:
-            # freeze training any of the layers of the base model
-            for layer in self.base_model.layers:
-                layer.trainable = False
-
-            flatten = self.base_model.output
-            flatten = Flatten()(flatten)
-
-            bboxHead = Dense(128, activation="relu")(flatten)
-            bboxHead = Dense(64, activation="relu")(bboxHead)
-            bboxHead = Dense(32, activation="relu")(bboxHead)
-            bboxHead = Dense(4, activation="sigmoid", name="bounding_box")(bboxHead)
-            # 4 neurons correspond to 4 co-ords in output bbox
-
-            softmaxHead = Dense(512, activation="relu")(flatten)
-            softmaxHead = Dropout(0.5)(softmaxHead)
-            softmaxHead = Dense(512, activation="relu")(softmaxHead)
-            softmaxHead = Dropout(0.5)(softmaxHead)
-            softmaxHead = Dense(512, activation="relu")(softmaxHead)
-            softmaxHead = Dropout(0.5)(softmaxHead)
-            softmaxHead = Dense(NUM_CLASSES, activation="softmax", name="class_label")(
-                softmaxHead
-            )
-            self.model = Model(
-                inputs=self.base_model.input, outputs=(bboxHead, softmaxHead)
-            )
-
-            losses = {
-                "class_label": "categorical_crossentropy",
-                "bounding_box": "mean_squared_error",
-            }
-            lossWeights = {"class_label": 1.0, "bounding_box": 1.0}
-            opt = RMSprop(INIT_LR)
-            self.model.compile(
-                loss=losses,
-                optimizer=opt,
-                metrics=["accuracy"],
-                loss_weights=lossWeights,
-            )
+            self.define_model()
+            self.history = self.train().history
         else:
             self.model = load_model(self.saved_model_path)
+            with open(self.history_path, "r") as f:
+                self.history = jsonpickle.decode(f.read())
+        logger.info(
+            f"\t\t $BLUE`custom_model_instance.model` took $RED{timer()-start:.2f} $BLUEseconds$RESET"
+        )
+        if self.lite_model_required:
+            lite_model_path = pathlib.Path(self.saved_model_path).with_suffix(".tflite")
+            if os.path.exists(lite_model_path):
+                with open(lite_model_path, "rb") as f:
+                    self.tflite_model = f.read()
+                    self.tflite_model_instance = LiteModel(
+                        lite.Interpreter(model_path=str(lite_model_path))
+                    )
+            else:
+                try:
+                    self.tflite_model = lite.TFLiteConverter.from_keras_model(
+                        self.model
+                    ).convert()
+                    self.tflite_model_instance = LiteModel(
+                        lite.Interpreter(model_content=self.tflite_model)
+                    )
+                    with open(lite_model_path, "wb") as f:
+                        f.write(self.tflite_model)
+                except Exception:
+                    logger.error(
+                        f"$REDCould not convert model to `tf.lite` model$RESET",
+                        exc_info=1,
+                    )
+                    exit(0)
+        logger.info(
+            f"\t$BLUE`custom_model_instance.__init__` took $RED{timer()-start:.2f} $BLUEseconds$RESET"
+        )
 
-    def train(self):
+    def train(self) -> History:
         # Load the data
         images, labels, bboxes, _ = load_training_data(training_data_dir)
         split = train_test_split(images, labels, bboxes, test_size=0.2, random_state=12)
@@ -181,7 +168,8 @@ class CustomModel:
                 show_trainable=True,
             )
 
-        logger.info(f"{BLUE}starting training...{RESET}")
+        logger.info(f"\t$BLUEstarting training...$RESET")
+        start = timer()
         # Train the model
         history = self.model.fit(
             x_train,
@@ -191,23 +179,29 @@ class CustomModel:
             batch_size=BATCH_SIZE,
             verbose=0,
         )
-        logger.info(f"{BLUE}ending training...{RESET}")
+        logger.info(f"\t$BLUEending training...$RESET")
+        logger.info(f"\t$BLUEtraining took $RED{timer()-start:.2f} $BLUEseconds$RESET")
         self.model.save(self.saved_model_path)
-
+        with open(self.history_path, "w") as f:
+            f.write(jsonpickle.encode(history.history))
         return history
 
-    def test_model_images(self, include_random: bool = False):
+    def test_model_images(self, only_random: bool = False):
+        start = timer()
         images, bboxes, image_paths = load_test_data(test_data_dir)
         if os.path.exists(self.predicted_labels_path):
             with open(self.predicted_labels_path, "rb") as f:
                 predicted_labels = pickle.load(f)
         else:
-            logger.info(f"{BLUE}predicting labels for images...{RESET}")
+            logger.info(f"\t$BLUEpredicting labels for images...$RESET")
             predicted_labels = self.model.predict(
                 images,
                 batch_size=BATCH_SIZE,
                 verbose=0,
             )[1]
+            logger.info(
+                f"\t$BLUEpredicting labels took $RED{timer()-start:.2f} $BLUEseconds$RESET"
+            )
             with open(self.predicted_labels_path, "wb") as f:
                 pickle.dump(predicted_labels, f)
         predicted_labels = np.array(predicted_labels)
@@ -216,49 +210,7 @@ class CustomModel:
         with open(labels_path, "r") as f:
             labels_json = json.load(f)
 
-        testTargets = {"class_label": predicted_labels, "bounding_box": bboxes}
-        metrics_names: list[str] = self.model.metrics_names
-        correct = 0
-
-        if not os.path.exists(self.scores_path):
-            logger.info(
-                f"{BLUE}evaluating model {GREEN}{self.base_model.name} {BLUE}and saving scores...{RESET}"
-            )
-            scores = self.model.evaluate(
-                images,
-                testTargets,
-                batch_size=BATCH_SIZE,
-                verbose=0,
-            )
-
-            for image_path in image_paths:
-                index = np.where(image_paths == image_path)[0][0]
-                image = load_img(image_path, target_size=IMG_SIZE)
-                image = img_to_array(image) / 255.0
-                image = np.expand_dims(image, axis=0)
-
-                # # finding class label with highest pred. probability
-                i = np.argmax(predicted_labels[index], axis=0)
-                predicted_label = labels_json[str(i)]
-                correct_label = labels_json[str(correct_labels[index])]
-
-                if predicted_label == correct_label:
-                    correct += 1
-
-            test_acc = f"Test accuracy: {correct/len(images)*100:.2f}%\n"
-            with open(self.scores_path, "w") as f:
-                for name, score in zip(metrics_names, scores):
-                    name = name.split("_")
-                    name[0] = name[0].capitalize()
-                    joined_name = " ".join(name)
-                    if "Loss" in joined_name or "loss" in joined_name:
-                        line = "{}: {:.2f}\n".format(joined_name, score)
-                    else:
-                        line = "{}: {:.2f}%\n".format(joined_name, score * 100)
-                    f.write(line)
-                f.write(test_acc)
-        if include_random:
-            logger.info(f"")
+        if only_random:
             for i in range(100):
                 correct = 0
                 random.seed(random.random() * 50)
@@ -275,9 +227,55 @@ class CustomModel:
                 random_acc = f"{correct/len(random_choices)*100:.2f}\n"
                 with open(self.accuracies_path, "a") as f:
                     f.write(random_acc)
+                logger.info(f"\t$BLUEtesting random images took $RED{timer()-start:.2f} $BLUEseconds$RESET")
+        else:
+            if not os.path.exists(self.scores_path):
+                logger.info(
+                    f"\t$BLUEevaluating model $RED{self.base_model.name} $BLUEand saving scores...$RESET"
+                )
+                testTargets = {"class_label": predicted_labels, "bounding_box": bboxes}
+                metrics_names: list[str] = self.model.metrics_names
+
+                scores = self.model.evaluate(
+                    images,
+                    testTargets,
+                    batch_size=BATCH_SIZE,
+                    verbose=0,
+                )
+                with open(self.scores_path, "w") as f:
+                    for name, score in zip(metrics_names, scores):
+                        name = name.split("_")
+                        name[0] = name[0].capitalize()
+                        joined_name = " ".join(name)
+                        if "Loss" in joined_name or "loss" in joined_name:
+                            line = "{}: {:.2f}\n".format(joined_name, score)
+                        else:
+                            line = "{}: {:.2f}%\n".format(joined_name, score * 100)
+                        f.write(line)
+                correct = 0
+                for image_path in image_paths:
+                    index = np.where(image_paths == image_path)[0][0]
+                    image = load_img(image_path, target_size=IMG_SIZE)
+                    image = img_to_array(image) / 255.0
+                    image = np.expand_dims(image, axis=0)
+
+                    # # finding class label with highest pred. probability
+                    i = np.argmax(predicted_labels[index], axis=0)
+                    predicted_label = labels_json[str(i)]
+                    correct_label = labels_json[str(correct_labels[index])]
+
+                    if predicted_label == correct_label:
+                        correct += 1
+
+                test_acc = f"Test accuracy: {correct/len(images)*100:.2f}%\n"
+                with open(self.scores_path, "a") as f:
+                    f.write(test_acc)
+                logger.info(f"\t$BLUEtesting all images took $RED{timer()-start:.2f} $BLUEseconds$RESET")
 
     def test_model_videos(self, input_video_fn: str):
-        logger.info(f"processing input video {GREEN}{input_video_fn}{RESET}")
+        logger.info(
+            f"$BOLD$COLOR==> $BOLD$BLUEprocessing input video $GREEN{input_video_fn}$RESET"
+        )
         input_video_path = os.path.join(input_videos_dir, input_video_fn)
         output_video_path = os.path.join(
             output_path,
@@ -292,17 +290,6 @@ class CustomModel:
         )
         with open(labels_path, "r") as f:
             labels_json = json.load(f)
-        lite_model_path = pathlib.Path(self.saved_model_path).with_suffix(".tflite")
-        if os.path.exists(lite_model_path):
-            with open(lite_model_path, "rb") as f:
-                model = LiteModel.from_file(model_path=str(lite_model_path))
-        else:
-            try:
-                model = LiteModel.from_keras_model(self.model)
-                with open(lite_model_path, "wb") as f:
-                    f.write(model)
-            except:
-                model = self.model
         video_stream = ffmpeg.probe(input_video_path)["streams"][0]
         ns = {"__builtins__": None}
         # frame_height = int(video_stream["height"])
@@ -310,6 +297,12 @@ class CustomModel:
         fps = math.ceil(float(eval(video_stream["avg_frame_rate"], ns)))
         # pix_fmt = video_stream["pix_fmt"]
         pix_fmt = "rgb24"
+        ffmpeg_args = {
+            "hide_banner": None,
+            "loglevel": "quiet",
+            "v": "quiet",
+            "nostats": None,
+        }
         if not os.path.exists(pathlib.Path(input_frames_path).parent):
             os.mkdir(pathlib.Path(input_frames_path).parent)
         if not os.path.exists(pathlib.Path(output_video_path).parent):
@@ -319,99 +312,131 @@ class CustomModel:
         if generated_frames:
             if generated_video:
                 logger.info(
-                    f"already generated frames and video for video {GREEN}{input_video_fn}{RESET}"
+                    f"\t$BLUEalready generated frames and video for video $GREEN{input_video_fn}$RESET"
                 )
             else:
                 logger.info(
-                    f"reading generated frames for video {GREEN}{input_video_fn}{RESET}"
+                    f"\t$BLUEreading generated frames for video $GREEN{input_video_fn}$RESET"
                 )
                 with gzip.GzipFile(input_frames_path, "r") as f:
-                    frames = np.load(f)
-                logger.info(f"writing output video {GREEN}{output_video_path}{RESET}")
+                    resized_frames = np.load(f)
+                logger.info(f"writing output video $GREEN{output_video_path}$RESET")
                 vidwrite(
                     output_video_path,
-                    frames,
+                    resized_frames,
                     fps=fps // 4,
                     in_pix_fmt=pix_fmt,
-                    input_args={
-                        "hide_banner": None,
-                        "loglevel": "quiet",
-                        "nostats": None,
-                    },
+                    input_args=ffmpeg_args,
                     output_args={
-                        "loglevel": "quiet",
-                        "v": "quiet",
-                        "nostats": None,
+                        i: ffmpeg_args[i] for i in ffmpeg_args if i != "hide_banner"
                     },
                 )
                 return
         else:
-            logger.info(f"generating frames for video {GREEN}{input_video_fn}{RESET}")
+            logger.info(f"\t$BLUEgenerating frames")
             vidcap = cv2.VideoCapture(input_video_path)
+            resized_frames = []
             frames = []
             count = 0
             while vidcap.isOpened():
                 success, frame = vidcap.read()
                 if success:
-                    image = Image.fromarray(frame)
-                    frame = cv2.resize(frame, (64, 64))  # resize the frame
-                    expanded_frame = np.expand_dims(
-                        frame, axis=0
-                    )  # add an extra dimension to make it a batch of size 1
-                    if count == 0:
-                        start = timer()
-                    if isinstance(model, Model):
-                        label_predictions = model.predict(expanded_frame, verbose=0)
-                    elif isinstance(model, LiteModel):
-                        label_predictions = model.predict(expanded_frame)
-                    if count == 0:
-                        logger.info(
-                            f"predicting label took {RED}{timer()-start:.6f} {BLUE}seconds{RESET}"
-                        )
-                    label = labels_json[str(np.argmax(label_predictions))]
-                    # logger.info(label)
-                    if count == 0:
-                        start = timer()
-                    font = ImageFont.truetype(
-                        "/usr/share/fonts/OTF/intelone-mono-font-family-regular.otf",
-                        size=20,
-                    )
-                    margin = 10
-                    left, top, right, bottom = font.getbbox(label)
-                    width, height = right - left, bottom - top
-                    button_size = (width + 2 * margin, height + 3 * margin)
-                    button_img = Image.new("RGBA", button_size, "black")
-                    button_draw = ImageDraw.Draw(button_img)
-                    button_draw.text((10, 10), label, fill=(0, 255, 0), font=font)
-                    image.paste(button_img, (0, 0))
-                    frames.append(np.array(image, dtype=np.uint8))
-                    if count == 0:
-                        logger.info(
-                            f"modifying image took {RED}{timer()-start:.6f} {BLUE}seconds{RESET}"
-                        )
-                    count += fps  # i.e. at 30 fps, this advances one second
+                    img = Image.fromarray(frame)
+                    frames.append(img)
+                    resized_frame = cv2.resize(frame, (64, 64))
+                    resized_frames.append(resized_frame)
+                    count += fps
                     vidcap.set(cv2.CAP_PROP_POS_FRAMES, count)
                 else:
                     vidcap.release()
                     break
-            frames = np.array(frames)
+            resized_frames = np.array(resized_frames)
+            start = timer()
+            if not self.lite_model_required:
+                label_predictions = self.model.predict(
+                    resized_frames, verbose=0, batch_size=BATCH_SIZE
+                )
+            else:
+                label_predictions = self.tflite_model_instance.predict(resized_frames)
             logger.info(
-                f"saving {RED}{len(frames)}{BLUE} frames in {GREEN}{input_frames_path}{RESET}"
+                f"\t$BLUEpredicting labels took $RED{timer()-start:.2f} $BLUEseconds$RESET"
+            )
+            start = timer()
+            for index, frame in zip(range(resized_frames.shape[0]), frames):
+                label = labels_json[str(np.argmax(label_predictions[index]))]
+                font = ImageFont.truetype(
+                    "/usr/share/fonts/OTF/intelone-mono-font-family-regular.otf",
+                    size=20,
+                )
+                margin = 10
+                left, top, right, bottom = font.getbbox(label)
+                width, height = right - left, bottom - top
+                button_size = (width + 2 * margin, height + 3 * margin)
+                button_img = Image.new("RGBA", button_size, "black")
+                button_draw = ImageDraw.Draw(button_img)
+                button_draw.text((10, 10), label, fill=(0, 255, 0), font=font)
+                frame.paste(button_img, (0, 0))
+                frames[index] = np.array(frame, dtype=np.uint8)
+            logger.info(
+                f"\t$BLUEmodifying images took $RED{timer()-start:.2f} $BLUEseconds$RESET"
+            )
+            logger.info(
+                f"\t$BLUEsaving $RED{len(resized_frames)}$BLUE  frames in $GREEN{input_frames_path}$RESET"
             )
             with gzip.GzipFile(input_frames_path, mode="w", compresslevel=3) as f:
-                np.save(f, frames)
-            logger.info(f"writing output video {GREEN}{output_video_path}{RESET}")
+                np.save(f, resized_frames)
+            logger.info(f"\t$BLUEwriting output video $GREEN{output_video_path}$RESET")
             vidwrite(
                 output_video_path,
-                frames,
+                resized_frames,
                 fps=fps // 4,
                 in_pix_fmt=pix_fmt,
-                input_args={
-                    "hide_banner": None,
-                    "loglevel": "quiet",
-                    "nostats": None,
-                    "v": "quiet",
+                input_args=ffmpeg_args,
+                output_args={
+                    i: ffmpeg_args[i] for i in ffmpeg_args if i != "hide_banner"
                 },
-                output_args={"loglevel": "quiet", "nostats": None, "v": "quiet"},
             )
             return
+
+    def define_model(self):
+        # freeze training any of the layers of the base model
+        for layer in self.base_model.layers:
+            layer.trainable = False
+
+        flatten = self.base_model.output
+        flatten = Flatten()(flatten)
+
+        bboxHead = Dense(128, activation="relu")(flatten)
+        bboxHead = Dense(64, activation="relu")(bboxHead)
+        bboxHead = Dense(32, activation="relu")(bboxHead)
+        bboxHead = Dense(4, activation="sigmoid", name="bounding_box")(bboxHead)
+        # 4 neurons correspond to 4 co-ords in output bbox
+
+        softmaxHead = Dense(512, activation="relu")(flatten)
+        if self.lite_model_required == False:
+            softmaxHead = Dropout(0.5)(softmaxHead)
+        softmaxHead = Dense(512, activation="relu")(softmaxHead)
+        if self.lite_model_required == False:
+            softmaxHead = Dropout(0.5)(softmaxHead)
+        softmaxHead = Dense(512, activation="relu")(softmaxHead)
+        if self.lite_model_required == False:
+            softmaxHead = Dropout(0.5)(softmaxHead)
+        softmaxHead = Dense(NUM_CLASSES, activation="softmax", name="class_label")(
+            softmaxHead
+        )
+        self.model = Model(
+            inputs=self.base_model.input, outputs=(bboxHead, softmaxHead)
+        )
+
+        losses = {
+            "class_label": "categorical_crossentropy",
+            "bounding_box": "mean_squared_error",
+        }
+        lossWeights = {"class_label": 1.0, "bounding_box": 1.0}
+        opt = AdamW(INIT_LR)
+        self.model.compile(
+            loss=losses,
+            optimizer=opt,
+            metrics=["accuracy"],
+            loss_weights=lossWeights,
+        )

@@ -1,15 +1,17 @@
 import os
+import random
 from typing import Tuple
 
 import numpy as np
 import pandas as pd
 from keras.utils import img_to_array, load_img
-from modules.config import IMG_SIZE, NUM_CLASSES
 from sklearn.preprocessing import LabelBinarizer
+
+from modules.config import IMG_SIZE, NUM_CLASSES
 
 
 # Function to load the images and labels from the dataset
-def load_training_data(data_dir):
+def load_training_data(data_dir: str):
     images = []
     labels = []
     bboxes = []
@@ -51,7 +53,7 @@ def load_training_data(data_dir):
     return images, labels, bboxes, image_paths
 
 
-def load_test_data(data_dir):
+def load_test_data(data_dir: str):
     images = []
     bboxes = []
     image_paths = []
@@ -78,3 +80,20 @@ def load_test_data(data_dir):
     image_paths = np.array(image_paths)
 
     return images, bboxes, image_paths
+
+
+def load_test_data_poc(
+    data_dir: str, size: int, seed="Laura"
+) -> tuple[np.ndarray, np.ndarray]:
+    images = []
+    with open(os.path.join(data_dir, "GT-final_test.test.csv")) as csvFile:
+        annotations = pd.read_csv(csvFile, sep=";")
+        # loop over all images in current annotations file
+        for _, row in annotations.iterrows():
+            impath = os.path.abspath(os.path.join(data_dir, row[0]))
+            image = img_to_array(load_img(impath, target_size=IMG_SIZE))
+            images.append(image)
+    images = np.array(images, dtype="float32") / 255.0
+    random.seed(seed)
+    indexes = np.random.choice(len(images), size=size, replace=False)
+    return indexes, images[indexes]
